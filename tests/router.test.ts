@@ -141,3 +141,20 @@ test('reversed transaction timestamps do not cause primary to be selected after 
   const done=await r.run(p.id);
   assert.equal(done.status,'succeeded'); assert.equal(done.charges.length,1); assert.equal(done.charges[0].provider,'beacon');
 });
+test('early webhook after crash before send preserves replayability of prepared attempt', async () => {
+  let crash=true;
+  class BeforeSendCrash extends Simulator {
+    override async send(request:ProviderRequest) {
+      if(crash) { crash=false; throw new Error('Crash before any dispatch'); }
+      return super.send(request);
+    }
+  }
+  const r=new PaymentRouter(new BeforeSendCrash(()=>now));
+  const p=await r.create(randomUUID(),'happy_path');
+  await assert.rejects(()=>r.run(p.id),/Crash before any dispatch/);
+  const prepared=await r.get(p.id);
+  assert.equal(prepared.attempts[0].status,'prepared'); assert.equal(prepared.charges.length,0);
+  const body=JSON.stringify({provider:'atlas',event_id:`early:${p.id}`,intent_id:p.id,idempotency_key:prepared.attempts[0].idempotency_key});
+  const done=(await r.webhook(body,signWebhook(body))).payment;
+  assert.equal(done.status,'succeeded'); assert.equal(done.charges.length,1); assert.equal(done.attempts.length,1);
+});

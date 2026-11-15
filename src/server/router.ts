@@ -104,7 +104,10 @@ export class PaymentRouter {
         return true;
       }
       await event(db,intent.id,`webhook:${body.event_id}`,'info','Signed provider event received','Signature verified; outcome checked against the original provider request, not trusted from the event body.');
-      if (['prepared','pending'].includes(attempt.status)) await this.apply(db,intent,attempt,await this.simulator.lookup(attempt.idempotency_key));
+      if (['prepared','pending'].includes(attempt.status)) {
+        const result = await this.simulator.lookup(attempt.idempotency_key);
+        if (attempt.status !== 'prepared' || result !== 'pending') await this.apply(db,intent,attempt,result);
+      }
       return false;
     });
     return {duplicate,payment:await this.run(body.intent_id)};
