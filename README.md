@@ -37,3 +37,22 @@ The demo settles delayed requests lazily when a retry, reconciliation, or webhoo
 This is not a production payment system. Production integrations need real provider contracts, authenticated merchant access, provider signature/timestamp verification, operational reconciliation workers, PII/security controls, abuse prevention, and provider-specific guarantees that a no-charge result is truly terminal. A public payment UUID is an unguessable demo capability; it is not a merchant authentication system. Demo data is persistent and contains no personal or card information.
 
 Use a PostgreSQL service reachable by the hosting platform, set `DATABASE_URL` and a random `WEBHOOK_SECRET`, and run `npm run db:migrate` once before serving. SSL should be configured in the database connection URL as required by the database host. Budget at least 16 database connections per active app instance or reduce the two pool limits. Next.js uses the Node runtime, not Edge. No filesystem persistence is used.
+
+## Preview deployment
+
+1. Import this repository into the connected Vercel account and choose the demo branch for a preview deployment.
+2. Provision a PostgreSQL database through your existing hosting/database account. Set `DATABASE_URL` (including the host-required TLS parameters) and a random `WEBHOOK_SECRET` for Preview.
+3. The included `vercel.json` runs the idempotent schema migration before `next build`. The preview is entirely simulated and requires no visitor login. If Vercel deployment protection is enabled, disable it for this public portfolio preview through the authorized account settings.
+4. Open the preview, choose a scenario, pay €49.99, and follow the merchant timeline. Use **New experiment** for another order. A browser refresh restores the current order; retries never create a new intent.
+
+For a container host, build with `docker build -t switchboard .`, run migrations with the database environment set, then run the image with `DATABASE_URL`, `WEBHOOK_SECRET`, and port 3000. PostgreSQL must be hosted separately; the local Compose service is development-only. Do not expose that database publicly.
+
+### Demo API
+
+- `POST /api/payments` with `{ "order_id": "<uuid>", "scenario": "delayed_success" }` creates or retrieves the order's intent. Extra fields, including client-provided amounts or providers, are rejected.
+- `POST /api/payments/<id>/pay` routes the payment. `retry` and `reconcile` use the same safe state machine. These actions accept no overrides.
+- `GET /api/payments/<id>` reads the intent, recorded attempts, decision timeline, and independently persisted simulator charges.
+- `POST /api/payments/<id>/webhook-demo` emits the same internally signed, attempt-bound event twice. It cannot choose an outcome or change routing rules.
+- `POST /api/webhooks` requires an HMAC-SHA256 signature of the raw body in `x-provider-signature`. Event shape: `{ provider, event_id, intent_id, idempotency_key }`.
+
+The browser automatically checks delayed outcomes for up to 15 polls; the unresolved timeout intentionally needs manual checks and never permits failover. The success count in the merchant view comes from the independent simulator charge ledger, not a UI counter.
