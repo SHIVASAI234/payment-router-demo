@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeftRight, ArrowRight, ArrowUpRight, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Code2, CreditCard, ExternalLink, FlaskConical, GitBranch, Globe2, Info, Layers3, Loader2, LockKeyhole, Play, Radio, RotateCcw, ShieldCheck, ShoppingBag, Terminal, X, XCircle, Zap } from 'lucide-react';
 import { scenarios, type Scenario } from '@/shared/scenarios';
 import type { Payment, TimelineEvent } from '@/server/router';
+import { saveSession, storageKey } from '@/shared/session';
 
-const storageKey = 'switchboard.payment.v1';
 const money = (cents:number) => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(cents/100);
 async function api(path:string, data?:unknown):Promise<Payment> {
   const response = await fetch(path,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)}),cache:'no-store'});
@@ -35,6 +35,7 @@ export default function Home() {
   const [busy,setBusy] = useState(false);
   const [ready,setReady] = useState(false);
   const [error,setError] = useState('');
+  const [storageWarning,setStorageWarning] = useState(false);
   const [docs,setDocs] = useState(false);
   const [inspector,setInspector] = useState(false);
   const order = useRef('');
@@ -64,15 +65,18 @@ export default function Home() {
     }
     void restore(); return ()=>{alive=false;};
   },[]);
-  const remember = useCallback((p:Payment)=>{
-    localStorage.setItem(storageKey,JSON.stringify({id:p.id,order_id:p.order_id,scenario:p.scenario}));
-    setPayment(p);
+  const persist = useCallback((value:unknown)=>{
+    if(!saveSession(value)) setStorageWarning(true);
   },[]);
+  const remember = useCallback((p:Payment)=>{
+    persist({id:p.id,order_id:p.order_id,scenario:p.scenario});
+    setPayment(p);
+  },[persist]);
   const operate = useCallback(async(action='pay')=>{
     if(working.current || !ready) return;
     working.current=true; setBusy(true); setError('');
     try {
-      localStorage.setItem(storageKey,JSON.stringify({id:payment?.id,order_id:order.current,scenario}));
+      persist({id:payment?.id,order_id:order.current,scenario});
       let p=payment;
       if(!p) { p=await api('/api/payments',{order_id:order.current,scenario}); remember(p); }
       const count=scenario==='concurrent_retry' && action!=='webhook-demo'?8:1;
@@ -81,7 +85,7 @@ export default function Home() {
       pollCount.current=0;
     } catch(e) {setError(e instanceof Error?e.message:'Connection interrupted. Retry the same order.');}
     finally {working.current=false;setBusy(false);}
-  },[payment,ready,remember,scenario]);
+  },[payment,ready,remember,scenario,persist]);
 
   useEffect(()=>{
     if(!pending || busy || !payment || scenario==='unresolved_timeout' || pollCount.current>=15 || error) return;
@@ -100,7 +104,7 @@ export default function Home() {
   function reset(nextScenario=scenario) {
     if(busy) return;
     order.current=crypto.randomUUID(); setPayment(null); setScenario(nextScenario);setError('');pollCount.current=0;
-    localStorage.setItem(storageKey,JSON.stringify({order_id:order.current,scenario:nextScenario}));
+    persist({order_id:order.current,scenario:nextScenario});
   }
   const atlas=payment?.attempts.find(a=>a.provider==='atlas');
   const beacon=payment?.attempts.find(a=>a.provider==='beacon');
@@ -133,6 +137,7 @@ export default function Home() {
                 {busy?'Routing your payment…':paid?'Payment complete':pending?'Check payment status':declined?'Payment declined':'Pay €49.99'}{!paid&&!busy&&!declined&&<ArrowRight size={16}/>}
               </button>
               <p className="checkout-disclaimer"><ShieldCheck size={12}/>100% simulated. Zero real money.</p>
+              {storageWarning&&<div className="pending-note">Browser storage is unavailable. Payments still work, but keep this tab open: refresh cannot restore this order.</div>}
               {error&&<div className="error-box" role="alert">{error}<button onClick={()=>void operate('retry')}>Retry same order<ArrowRight size={12}/></button></div>}
               {payment&&<div className={`payment-status ${status}`} role="status"><span/>{stateLabel}{paid&&<strong>{money(payment.amount_cents)}</strong>}</div>}
             </div>
