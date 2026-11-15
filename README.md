@@ -19,6 +19,8 @@ npm run dev
 
 For a production build: `npm run typecheck && npm run build && npm start`.
 
+With the production server running, `npm run test:http` verifies all eight scenarios plus request validation over HTTP. Set `APP_URL` to target an authorized preview URL instead of localhost.
+
 ## Safety model
 
 - An order UUID has exactly one persistent payment intent (unique PostgreSQL constraint). Amount is always **4999 integer cents, EUR**, assigned server-side.
