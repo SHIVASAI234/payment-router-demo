@@ -12,7 +12,7 @@ export type Attempt = { id: string; intent_id: string; provider: Provider; idemp
 export type TimelineEvent = { id: string; kind: string; title: string; detail: string; created_at: string };
 export type Payment = Intent & { attempts: Attempt[]; events: TimelineEvent[]; charges: { id: string; provider: Provider; amount_cents: number; currency: string }[]; webhook_count: number };
 async function event(db: PoolClient, id: string, key: string, kind: string, title: string, detail: string) {
-  await db.query(`INSERT INTO payment_events(intent_id,event_key,kind,title,detail) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(intent_id,event_key) DO NOTHING`, [id,key,kind,title,detail]);
+  await db.query(`INSERT INTO payment_events(intent_id,event_key,kind,title,detail) VALUES($1,$2,$3,$4,$5) ON CONFLICT(intent_id,event_key) DO NOTHING`, [id,key,kind,title,detail]);
 }
 export class PaymentRouter {
   constructor(readonly simulator = new Simulator()) {}
