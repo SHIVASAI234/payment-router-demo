@@ -32,7 +32,7 @@ export class PaymentRouter {
       await db.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
       const {rows:[intent]} = await db.query<Intent>('SELECT * FROM payment_intents WHERE id=$1',[id]);
       if (!intent) throw new NotFound('Payment not found');
-      const {rows:attempts} = await db.query<Attempt>("SELECT * FROM provider_attempts WHERE intent_id=$1 ORDER BY created_at, provider",[id]);
+      const {rows:attempts} = await db.query<Attempt>("SELECT * FROM provider_attempts WHERE intent_id=$1 ORDER BY CASE provider WHEN 'atlas' THEN 0 WHEN 'beacon' THEN 1 END",[id]);
       const {rows:events} = await db.query<TimelineEvent>('SELECT id,kind,title,detail,created_at FROM payment_events WHERE intent_id=$1 ORDER BY id',[id]);
       const {rows:charges} = await db.query<Payment['charges'][number]>('SELECT id,provider,amount_cents,currency FROM simulator_charges WHERE intent_id=$1 ORDER BY created_at',[id]);
       const {rows:[receipts]} = await db.query('SELECT count(*)::int AS count FROM webhook_receipts WHERE intent_id=$1',[id]);
@@ -47,7 +47,7 @@ export class PaymentRouter {
         const {rows:[intent]} = await db.query<Intent>('SELECT * FROM payment_intents WHERE id=$1 FOR UPDATE',[id]);
         if (!intent) throw new NotFound('Payment not found');
         if (['succeeded','declined','failed'].includes(intent.status)) return false;
-        const {rows:attempts} = await db.query<Attempt>('SELECT * FROM provider_attempts WHERE intent_id=$1 ORDER BY created_at,provider',[id]);
+        const {rows:attempts} = await db.query<Attempt>("SELECT * FROM provider_attempts WHERE intent_id=$1 ORDER BY CASE provider WHEN 'atlas' THEN 0 WHEN 'beacon' THEN 1 END",[id]);
         const current = attempts.at(-1);
         if (!current) { await this.prepare(db,intent,'atlas'); return true; }
         if (current.status === 'not_sent' || current.status === 'no_charge') {

@@ -125,3 +125,19 @@ test('webhook and retries racing on no-charge confirmation still produce one bac
   const done = await router.get(p.id);
   assert.equal(done.status,'succeeded'); assert.equal(done.charges.length,1); assert.equal(done.charges[0].provider,'beacon'); assert.equal(done.attempts.length,2);
 });
+test('reversed transaction timestamps do not cause primary to be selected after backup preparation', async () => {
+  let crash=true;
+  class BackupCrash extends Simulator {
+    override async send(request:ProviderRequest) {
+      if(request.provider==='beacon'&&crash) { crash=false; throw new Error('Crash before backup dispatch'); }
+      return super.send(request);
+    }
+  }
+  const r=new PaymentRouter(new BackupCrash(()=>now));
+  const p=await r.create(randomUUID(),'outage');
+  await assert.rejects(()=>r.run(p.id),/Crash before backup/);
+  // A waiting transaction can start before the transaction preparing Atlas.
+  await pool.query("UPDATE provider_attempts SET created_at=CASE provider WHEN 'atlas' THEN now() ELSE now()-interval '1 minute' END WHERE intent_id=$1",[p.id]);
+  const done=await r.run(p.id);
+  assert.equal(done.status,'succeeded'); assert.equal(done.charges.length,1); assert.equal(done.charges[0].provider,'beacon');
+});
